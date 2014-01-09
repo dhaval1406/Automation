@@ -1,0 +1,138 @@
+
+R version 3.0.1 (2013-05-16) -- "Good Sport"
+Copyright (C) 2013 The R Foundation for Statistical Computing
+Platform: x86_64-w64-mingw32/x64 (64-bit)
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+> # List the files and removing everything
+> rm(list = ls())
+> gc() #it will free memory
+         used (Mb) gc trigger (Mb) max used (Mb)
+Ncells 182504  9.8     407500 21.8   350000 18.7
+Vcells 276995  2.2     786432  6.0   786431  6.0
+> 
+> # Trying to capture runtime
+> begTime <- Sys.time()
+> 
+> # Getting file names from command line arguments
+> args <- commandArgs(trailingOnly = TRUE)
+> 
+> search_log_file <- args[1]
+> detailtab_log_file <- args[2]
+> codefix_log_file <- args[3]
+> 
+> rm(args)
+> 
+> #Getting the required package
+> require(plyr)
+> 
+> #Set working directory
+> setwd("P:/Data_Analysis/Weblog_Data/")
+> 
+> #Importing data
+> search_log    <- read.delim(search_log_file, header = TRUE, sep = "\t", quote = "", comment.char = "", na.strings=c("NA", ''))
+> detailTab_log <- read.delim(detailtab_log_file, header = TRUE, sep = "\t", quote = "", comment.char = "", na.strings=c("NA", ''))
+> codeFix_log   <- read.delim(codefix_log_file, header = TRUE, sep = "\t", quote = "", comment.char = "", na.strings=c("NA", ''))
+> category      <- read.csv('category.csv', header = FALSE, sep = ",", quote = "\"", comment.char = "", na.strings=c("NA", ''))
+> 
+> #clean up data
+> search_log <- search_log[c("AccessDateTime", "SessionId", "Q", "SEARCH_TYPE", "Status", "URL", "Link_URL", "SERIES_CODE", "CUSTCD")]
+> 	# Link_URL is used in Analysis # 3
+> 	#search_log <- search_log[c("AccessDateTime", "SessionId", "Q", "SEARCH_TYPE", "Status", "Link_URL", "SERIES_CODE", "CUSTCD")]
+> codeFix_log   <- codeFix_log[c("SessionId","PRODUCT_CODE", "SERIES_CODE","Referer", "CUSTCD")]
+> detailTab_log <- detailTab_log[c("SessionId","Tab_Name", "SERIES_CODE", "CUSTCD")]
+> # first two columns are not used
+> category <- category[, - c(1:2, 13)]
+> # Assigning column names
+> colnames(category) <- c("cat_id_1", "cat_name_1","cat_id_2", "cat_name_2","cat_id_3", "cat_name_3","cat_id_4", "cat_name_4","cat_id_5", "cat_name_5")
+> 
+> # removing blank series codes and conver  keywords to lower case and 
+> # removing internal acccounts with CUSTCD = "WOSMUS"
+> # 10/04 - Added SEARCH_TYPE == 1 to keep only "keyword search" and not suggestions
+> search_log <- subset(search_log, subset = ( !is.na(Q) & ( !(CUSTCD == "WOSMUS") | (is.na(CUSTCD)) ) & (SEARCH_TYPE == 1) ))
+> search_log$Q <- tolower(search_log$Q)
+> 
+> codeFix_log <- subset(codeFix_log, subset = (!(CUSTCD == "WOSMUS") | (is.na(CUSTCD))), select = -CUSTCD)
+> 	# For analysis # 3, non blank Referer is used
+> 	#codeFix_log <- subset(codeFix_log, subset = ( !is.na(Referer) & (!(CUSTCD == "WOSMUS") | (is.na(CUSTCD))) ), select = -CUSTCD)
+> detailTab_log <- subset(detailTab_log, subset = (!(CUSTCD == "WOSMUS") | (is.na(CUSTCD))), select = -CUSTCD)
+> 
+> # Normalizing keywords by stemming, currently only stemming plurals e.g. words that end with `s`
+> search_log$Q <- gsub("(.+[^s])s$", "\\1", search_log$Q)
+> 
+> ### summarize total keyword searches - search_log[1:100,]
+> total_keyword_search <- ddply(search_log, .(Q), summarise, 
++                               sum_link = sum(Status=='Link'), 
++                               sum_linkCtg = sum(Status=='LinkCtg'), 
++                               total_search = sum (sum(Status=='NotFound'), (Status=='Hit')))
+> 
+> # total_codefix <- ddply(codeFix_log, .(SessionId, Referer), summarise, 
+> #                        #codefix_count = sum(Referer != ''), 
+> #                        #codefix_count = length(unique(c(SessionId)))
+> #                        codefix_count = length(unique(Referer))
+> # 					            )
+> # 
+> # # for Analysis # 3	
+> # total_codefix_anl3 <- ddply(codeFix_log, .(SessionId, Referer, SERIES_CODE), summarise, 
+> #             					 codefix_count = length(unique(PRODUCT_CODE))
+> #                       )
+> # 		
+> 
+> total_detailtab<- ddply(detailTab_log, .(SessionId, SERIES_CODE), summarise, 
++                        #codefix_count = length(unique(c(SessionId)))x
++                        tab_count = length(unique(Tab_Name)))
+> 		
+> # Merge total_keyword_search with search 
+> # keyword_search_merge <- merge(search_log, total_keyword_search, all.x=TRUE, by="Q", sort=FALSE)
+> # codefix_merge <- merge(codeFix_log, total_codefix, all.x=TRUE, by=c("SessionId", "Referer"), sort=FALSE)
+> 
+> # Function to format resultant CSV - generated during different analysis
+> format_name <- function(x){
++   time.stamp = format(Sys.time(), "%m%d%Y")
++   file.name = paste(x, sprintf("%s.csv", time.stamp), sep="_")
++   return(file.name)
++ }
+> 
+> # Function to extract and format from-to dates from log file name
+>   m <- regexec("_.*?_(.*?)_(.*?).txt", search_log_file)
+>   file.frm.date <- regmatches(search_log_file, m)[[1]][2]
+>   file.to.date  <- regmatches(search_log_file, m)[[1]][3]
+>   
+>   from.date = as.Date(file.frm.date, "%Y%m%d")
+>   to.date  = as.Date(file.to.date, "%Y%m%d")
+> 
+>   from.date = format(from.date, "%m%d%Y")
+>   to.date = format(to.date, "%m%d%Y")  
+> 
+> # Function to extract and format from-to dates from log file name
+>   format_from_to_date <- function(prefix, from.date, to.date){
++     formatted_name = paste(prefix, from.date, to.date, sep="_")
++     return(formatted_name)
++   }
+>     
+> ### Save image of R data for further use
+> image_file_name <- paste0("P:/Data_Analysis/Processed_R_Datasets/", 
++                           format_from_to_date("Data_Load_Prod", from.date, to.date), ".RData")
+> 
+> save.image(image_file_name)
+> 
+> runTime <- Sys.time()-begTime 
+> runTime
+Time difference of 1.115628 mins
+> 
+> # ========================================== Test Area =================================================
+> 
+> 
