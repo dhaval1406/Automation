@@ -14,6 +14,7 @@ Getopt::Long::Configure ("bundling");
 my $file_storage_dir = 'P:\Data_Analysis\Weblog_Data'; #'C:\Automation\Weblog_Data';
 my $logs_dir = 'P:\Data_Analysis\Logs'; #'C:\Automation\logs';
 my $r_script_dir = 'P:/R/New_approch_preserve_data/R_Scripts_Automated';
+my $r_script_dir_dt = 'P:/R/New_approch_preserve_data/R_Scripts_Data_Table';
 my $archive_dir = 'P:\Data_Analysis\Archive';
 
 # Use date time function to get date in particular time zone
@@ -31,11 +32,12 @@ GetOptions ('t=s'  => \$type,
            );
 
 # Files to extract
-my @log_files = ('search_log', 'detailtab_log', 'codefix_log');
+my @log_files = ('search_log', 'detailtab_log', 'codefix_log', 'visit_log');
 my %table_field_values = (
 		'search_log' 	=> 'worldmvlog.us_dt_search_fix_ip',
 		'detailtab_log'	=> 'worldmvlog.us_dt_detailtab_fix_ip',
 		'codefix_log' 	=> 'worldmvlog.us_dt_codefix_fix_ip',
+		'visit_log' 	=> 'worldmvlog.us_dt_visit_fix_ip'
 );
 
 # Capture error logs and anything on command prompt - only when type is not custom-range
@@ -55,7 +57,7 @@ if($type ne "c") {
 # Extract weblogs and process R algorithms for Data Analysis
   extract_logs_and_execute(); 
 # Compress the log files to archive
-  cleanup_and_archive_log_file();
+#  cleanup_and_archive_log_file();
 #-----------------------------------------------------------------------------------------
 sub check_input{        
     usage() unless (!$help);
@@ -81,11 +83,23 @@ sub prepare_dates{
 	}
 	elsif ($type eq "w"){
 		$download_type = 'weekly';
-		$start_date = $today -> subtract(weeks => 1)->mdy('');
+		#$start_date = $today -> subtract(weeks => 1)->mdy('');
+		$end_date   = $today -> truncate(to => 'week')
+							 -> subtract(days => 1)
+			    	         -> mdy('');
+		$start_date = $today -> subtract(weeks => 1) 
+							 -> add(days => 1) 
+							 -> mdy('');
 	}
 	elsif($type eq "m"){
 		$download_type = 'monthly';
-		$start_date = $today -> subtract(months => 1)->mdy('');
+		#$start_date = $today -> subtract(months => 1)->mdy('');
+		$end_date   = $today -> truncate(to => 'month')
+                             -> subtract(days => 1)
+						     -> mdy('');
+		$start_date = $today -> subtract(months => 1) 
+	                		 -> add(days => 1) 
+							 -> mdy('');
 	}
 	elsif($type eq "c"){
 		$download_type = 'custom_range';
@@ -116,6 +130,11 @@ sub extract_logs_and_execute{
 
     # Extract each log file
 	foreach my $log_file (@log_files){
+	
+		# Visit logs are required only for monthly analysis. 
+		# So, skipping if log file is visit_log and type is not monthly
+		next if ( ($log_file eq "visit_log") and ($type ne "m") );				
+
 		#my $content = get($web_address) or die 'Unable to get page';
 		my $log_file_txt = $log_file.'_'.$start_year.$start_month.$start_day.'_'.$end_year.$end_month.$end_day.".txt";
 		my $req = GET $web_address.$table_field_values{$log_file};
@@ -125,7 +144,9 @@ sub extract_logs_and_execute{
 			# Delete the existing empty file
 			system ("DEL /F /Q $file_storage_dir\\$log_file_txt") if (-e $file_storage_dir.'\\'.$log_file_txt);
 			
-			$req->authorization_basic('29_ykaneda', '6T06YeBu0F5si1s');
+			#$req->authorization_basic('29_ykaneda', '6T06YeBu0F5si1s');
+			$req->authorization_basic('188_dpatel', 'czkCk9bMM3PZSiH');
+
 			my $res = $ua->request($req, $file_storage_dir.'\\'.$log_file_txt);
 			($res->is_success) ? print "\n $log_file_txt has been copied successfully \n" : 
 								 die $res->status_line. "\n $log_file_txt has not been copied successfully \n";
@@ -139,12 +160,24 @@ sub extract_logs_and_execute{
 	}
 		
 	# Calling R scripts with command line arguments
-	system("RTerm --vanilla --args $filenames_args $start_date $end_date < $r_script_dir/Data_Load_Prod.R > $logs_dir\\Data_Load_Prod_$end_date.txt") == 0 or die "I can't take it anymore. Died for Data_Load_Prod.R";
-	system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis1.R > $logs_dir\\Analysis1_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis1.R";
-	system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis2.R > $logs_dir\\Analysis2_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis2.R";
-	system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis3.R > $logs_dir\\Analysis3_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis3.R";
-	system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis4.R > $logs_dir\\Analysis4_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis4.R";
-	system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis5.R > $logs_dir\\Analysis5_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis5.R";
+	 print("\n RTerm --vanilla --args $filenames_args $start_date $end_date < $r_script_dir/Data_Load_Prod.R > $logs_dir\\Data_Load_Prod_$end_date.txt \n");
+	 system("RTerm --vanilla --args $filenames_args $start_date $end_date < $r_script_dir/Data_Load_Prod.R > $logs_dir\\Data_Load_Prod_$end_date.txt") == 0 or die "I can't take it anymore. Died for Data_Load_Prod.R";
+	 print("\n RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis1.R > $logs_dir\\Analysis1_$end_date.txt \n");
+	 system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis1.R > $logs_dir\\Analysis1_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis1.R";
+	 print("\n RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis2.R > $logs_dir\\Analysis2_$end_date.txt \n");
+	 system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis2.R > $logs_dir\\Analysis2_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis2.R";
+	 print("\n RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis3.R > $logs_dir\\Analysis3_$end_date.txt \n");
+	 system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis3.R > $logs_dir\\Analysis3_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis3.R";
+	 print("\n RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis4.R > $logs_dir\\Analysis4_$end_date.txt \n");
+	 system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis4.R > $logs_dir\\Analysis4_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis4.R";
+	 print("\n RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis5.R > $logs_dir\\Analysis5_$end_date.txt \n");
+	 system("RTerm --vanilla --args $start_date $end_date $download_type < $r_script_dir/Analysis5.R > $logs_dir\\Analysis5_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis5.R";
+
+	# Uses files from Data Table folder
+	if ($type eq "w"){
+		print("\n RTerm --vanilla --args $filenames_args $start_date $end_date $download_type < $r_script_dir_dt/click_conv_ratio_optimize_with_links.R > $logs_dir\\click_conv_ratio_$end_date.txt \n");
+		system("RTerm --vanilla --args $filenames_args $start_date $end_date $download_type < $r_script_dir_dt/click_conv_ratio_optimize_with_links.R > $logs_dir\\click_conv_ratio_$end_date.txt") == 0 or die "I can't take it anymore. Died for Analysis5.R";
+	}	
 }
 
 sub cleanup_and_archive_log_file{
